@@ -1,18 +1,148 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
   <title>Netrum Node Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 800px;
+      margin: auto;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+    .box {
+      border: 1px solid #ccc;
+      padding: 12px;
+      margin-top: 15px;
+    }
+    .error {
+      color: red;
+      margin-top: 10px;
+    }
+    .ok {
+      color: green;
+    }
+  </style>
 </head>
 <body>
 
-<h1>Netrum Node Dashboard</h1>
+  <h1>Netrum Node Dashboard</h1>
 
-<input id="nodeIdInput" placeholder="Enter node_id">
-<button id="loadNodeBtn">Load Node</button>
+  <input
+    id="nodeId"
+    placeholder="Enter node_id (example: netrum.lite.xxx.base.eth)"
+  />
 
-<div id="countdown"></div>
-<pre id="output"></pre>
+  <button onclick="loadNode()">Load Node</button>
 
-<script src="app.js"></script>
+  <p id="cooldown"></p>
+  <div id="output"></div>
+
+  <script>
+    const BASE = "https://node.netrumlabs.dev";
+    const RATE_LIMIT = 30;
+    let nextAllowed = 0;
+
+    function now() {
+      return Math.floor(Date.now() / 1000);
+    }
+
+    async function loadNode() {
+      const nodeId = document.getElementById("nodeId").value.trim();
+      const output = document.getElementById("output");
+      const cooldown = document.getElementById("cooldown");
+
+      if (!nodeId) {
+        output.innerHTML = "<p class='error'>Please enter node_id</p>";
+        return;
+      }
+
+      if (now() < nextAllowed) {
+        cooldown.innerText =
+          "Refresh available in " + (nextAllowed - now()) + "s";
+        return;
+      }
+
+      nextAllowed = now() + RATE_LIMIT;
+      startCountdown();
+
+      output.innerHTML = "Loading...";
+
+      try {
+        // 1️⃣ Node status
+        const statusRes = await fetch(
+          `${BASE}/metrics/node-status/${nodeId}`
+        );
+        if (!statusRes.ok) throw new Error("Node status not found");
+        const status = await statusRes.json();
+
+        // 2️⃣ Node stats
+        const statsRes = await fetch(
+          `${BASE}/polling/node-stats/${nodeId}`
+        );
+        if (!statsRes.ok) throw new Error("Node stats not found");
+        const stats = await statsRes.json();
+
+        // 3️⃣ Mining status
+        const miningRes = await fetch(
+          `${BASE}/mining/status/${nodeId}`
+        );
+        if (!miningRes.ok) throw new Error("Mining status not found");
+        const mining = await miningRes.json();
+
+        render(status, stats, mining);
+      } catch (err) {
+        output.innerHTML =
+          "<p class='error'>Node not found or API error</p>";
+      }
+    }
+
+    function render(status, stats, mining) {
+      const output = document.getElementById("output");
+
+      output.innerHTML = `
+        <div class="box">
+          <h3>Node Status</h3>
+          <p>Status: <b>${status?.status || "N/A"}</b></p>
+          <p>Requirements met: ${status?.requirements_met}</p>
+        </div>
+
+        <div class="box">
+          <h3>Node Stats</h3>
+          <p>Uptime: ${stats?.uptime || "N/A"}%</p>
+          <p>Tasks completed: ${stats?.tasks_completed || "N/A"}</p>
+        </div>
+
+        <div class="box">
+          <h3>Mining</h3>
+          <p>Mining active: ${mining?.active}</p>
+          <p>Mined tokens: ${mining?.mined_tokens}</p>
+        </div>
+      `;
+    }
+
+    function startCountdown() {
+      const cooldown = document.getElementById("cooldown");
+      const timer = setInterval(() => {
+        const left = nextAllowed - now();
+        if (left <= 0) {
+          cooldown.innerText = "You can refresh now";
+          clearInterval(timer);
+        } else {
+          cooldown.innerText = "Refresh available in " + left + "s";
+        }
+      }, 1000);
+    }
+  </script>
+
 </body>
 </html>
